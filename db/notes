@@ -1,0 +1,54 @@
+
+
+import sqlalchemy
+from sqlalchemy import create_engine
+engine = create_engine('mysql://root:adboom123@localhost/adboomadmin')
+
+conn = engine.connect()
+result = conn.execute("select * from portals")
+for row in result:
+    print "portal: ", row['name']
+conn.close()
+
+
+
+
+
+import sqlalchemy
+from sqlalchemy.ext.declarative import declarative_base
+
+>>> Base = declarative_base()
+
+from sqlalchemy import Column, Integer, String
+>>> class User(Base):
+...     __tablename__ = 'users'
+...
+...     id = Column(Integer, primary_key=True)
+...     name = Column(String)
+...     fullname = Column(String)
+...     password = Column(String)
+...
+...     def __repr__(self):
+...        return "<User(name='%s', fullname='%s', password='%s')>" % (
+...                             self.name, self.fullname, self.password)
+
+
+
+
+from sqlalchemy import Sequence
+Column(Integer, Sequence('user_id_seq'), primary_key=True)
+A full, foolproof Table generated via our declarative mapping is therefore:
+
+class User(Base):
+    __tablename__ = 'users'
+    id = Column(Integer, Sequence('user_id_seq'), primary_key=True)
+    
+    
+    from sqlalchemy.orm import sessionmaker
+>>> Session = sessionmaker(bind=engine)
+
+Session = sessionmaker()
+session = Session()
+
+ed_user = User(name='ed', fullname='Ed Jones', password='edspassword')
+>>> session.add(ed_user)

@@ -1,0 +1,10 @@
+Traceback (most recent call last):
+  File "/Library/Python/2.7/site-packages/spynner-2.15-py2.7.egg/spynner/browser.py", line 286, in _on_reply
+    self.manager.cookieJar().allCookies())
+AttributeError: 'Browser' object has no attribute 'manager'
+Traceback (most recent call last):
+  File "watcher.py", line 96, in <module>
+    watch.run()
+  File "watcher.py", line 44, in run
+    os.unlink(file)
+OSError: [Errno 2] No such file or directory: '/temp/20140228-21_31_02.request.json'
