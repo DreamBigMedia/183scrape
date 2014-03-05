@@ -42,16 +42,16 @@ class Mymerchinfo(Portal):
         Factory checks to see if this is the correct portal scraper to return.
         If we want mymerchinfo, this is the right scraper!
         """
-        return portal == 'mymerchinfo'
+        return portal == 'global_payments'
 
-    def setup(self, **kwargs):
+    def setup(self, **params):
         """
         This initializes the class with all the parameters 
         it will need to scrape the site.
         """
 
         # Turn all the incoming kwargs to class variables
-        params = kwargs['params']
+        params = params['params']
         for k, v in params.iteritems():
             setattr(self, k, v)
         
