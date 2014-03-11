@@ -27,6 +27,7 @@ from sqlalchemy.orm import sessionmaker
 
 from portals.portal import Portal
 from portals.mymerchinfo import Mymerchinfo
+from portals.meritus import Meritus
 
 logging.basicConfig(filename='/var/log/scraper/watcher.log', level=logging.DEBUG)
 
@@ -37,6 +38,8 @@ class Watch(Daemon):
         Run!
         """
         # Get all the files for processing
+        # TODO: put in config file
+        # better name request_pattern
         self.request_dir = '/temp/*.request.json'
 
         # --------------------------------------------------
@@ -53,7 +56,7 @@ class Watch(Daemon):
             # Set to 1 am 
             # --------------------------------------------------
             if dt.now().hour == 1:
-                self.processAuto()
+                self.auto()
             
             # --------------------------------------------------
             # FILE CHECK
@@ -70,46 +73,52 @@ class Watch(Daemon):
                     j = f.read()
         
                 params = json.loads(j)
-
+                
+                # Process the scrape
                 self.process(params)
+                
                 logging.info('Deleting: %s...'%file)
                 os.unlink(file)
 
-            # Sleep a while before checking the directory again
+            # Sleep a while before looping
             time.sleep(20)
     
-    def processAuto(self):
+    def auto(self):
         """
         Select from our database all the portals and active accounts that have scrapers.
         We are going to loop through each account and scrape the last 2 days data.
         """
         # TODO: connect from config file
+        
         conn_str = 'mysql://root:adboom123@localhost/adboomadmin'
         
         # For direct query to db
         engine = create_engine(conn_str)
         self.conn = engine.connect()
         
+        
         sql = 'select * from portals where scraper_active = 1'
         print self.conn.execute(sql).fetchall()
         
-        d=date.today()-timedelta(days=2)
-        print d
-        
+        # Get all chargebacks for the last 30 days.
+        d=date.today()-timedelta(days=30)
         
         
     
-    def process(self, **params):
+    def process(self, params):
         """
         This function processes a scrape from the passed params
         """
 
         # Factory for returning class for specific portal
         def Scraper(portal):
-            for cls in Portal.__subclasses__():
-                if cls.is_scraper_for(portal):
-                    return cls(portal)
-            raise ValueError
+            try:
+                for cls in Portal.__subclasses__():
+                    if cls.is_scraper_for(portal):
+                        return cls(portal)
+            except:
+                logging.exception('Could not find scraper for this portal. Exiting.')
+                raise ValueError
 
         # Get the scraper
         scraper = Scraper(params['portal'])
@@ -123,6 +132,24 @@ class Watch(Daemon):
             scraper.run()
         except:
             logging.exception(sys.exc_info()[0])
+        
+            
+    def grab_latest_prod_data(self):
+        """
+        Grab the latest uids and passwords from production, 
+        so that we have them up-to-date for our scrapes.
+        """
+        # Grab the file from the porduction box.
+        # There is a process running on production that keeps this file updated 
+        # rsync -r -v --progress -e ssh hirsh@charlie.oxigen.pw:/home/hirsh/portalInfo.txt /temp/portalInfo.txt
+        
+        # TODO: make sure return value is good.
+        os.command('rsync -e ssh hirsh@charlie.oxigen.pw:/home/hirsh/portalInfo.txt /temp/portalInfo.txt')
+        time.sleep(4)
+        
+        # Update the local table and data
+        
+        
 
 
 if __name__ == '__main__':

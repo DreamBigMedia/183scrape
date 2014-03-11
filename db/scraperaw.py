@@ -11,6 +11,7 @@ class ScrapeRaw(Base):
     date_received    = Column(String)
     transaction_date = Column(String)
     card_number      = Column(String)
+    card_type        = Column(String)
     amount           = Column(String)
     case_number      = Column(String)
     merchant_id      = Column(String)

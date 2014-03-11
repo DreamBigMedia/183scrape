@@ -8,3 +8,4 @@ Traceback (most recent call last):
   File "watcher.py", line 44, in run
     os.unlink(file)
 OSError: [Errno 2] No such file or directory: '/temp/20140228-21_31_02.request.json'
+QThreadStorage: Thread 0x7fcee3f7dd20 exited after QThreadStorage 7 destroyed

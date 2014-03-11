@@ -1,9 +1,10 @@
+import os
+import sys
+import ConfigParser
+import logging
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from scraperaw import ScrapeRaw
-import ConfigParser
-import logging
-import sys
 
 logging.basicConfig(filename='/var/log/scraper/watcher.log', level=logging.DEBUG)
 
@@ -16,9 +17,9 @@ class Upload(object):
     def __init__(self):
         
         try:
-            
             config = ConfigParser.ConfigParser()
-            config.read('config.cfg')
+            
+            config.read(os.path.dirname(__file__) + '/../config.cfg')
             
             # Are we uploading to dev or stage?
             # Make this an IF statement:
@@ -28,16 +29,13 @@ class Upload(object):
                                              config.get(section, 'uid'),
                                              config.get(section, 'pwd'),
                                              config.get(section, 'host'),
-                                             config.get(section, 'database'),)
+                                             config.get(section, 'database'))
             
-            logging.info('Connection String: ' % conn_str)
+            logging.info('Connection String: %s' % conn_str)
             
         except:
-            # If we have config prob, default to loading local db.
-            conn_str = 'mysql://hirsh:adboom123@mysql.adboom.technology/adboomadmin'
-            #conn_str = 'mysql://root:adboom123@localhost/adboomadmin'
-            #logging.debug('Unexpected error: %s' % sys.exc_info()[0])
-            logging.debug('Exception: Using connect %s ' % conn_str)
+            logging.debug('Unexpected error: %s' % sys.exc_info()[0])
+            raise
         
         # For direct query to db
         engine = create_engine(conn_str)
@@ -65,6 +63,7 @@ class Upload(object):
             s.date_received    = row['date_received']
             s.transaction_date = row['transaction_date']
             s.card_number      = row['card_number']
+            s.card_number      = row['card_type']
             s.amount           = row['amount']
             s.case_number      = row['case_number']
             s.merchant_id      = row['merchant_id']

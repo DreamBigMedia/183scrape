@@ -1,15 +1,16 @@
 """
-Global Payments Inc. Scraper
+Meritus Payment Scraper
 """
 
 import os
 import sys
 import re
+import math
 import spynner
 from StringIO import StringIO
 from portal import Portal
 
-class Mymerchinfo(Portal):
+class Meritus(Portal):
     """
     Handles scraping of this site.
     
@@ -24,36 +25,39 @@ class Mymerchinfo(Portal):
     # ----------------------------------------------------------------------
     # Mimic this user agent for this website.
     # ----------------------------------------------------------------------
+    # _user_agent = "Mozilla/5.0 (compatible; ABrowse 0.4; Syllable)"
     _user_agent = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.31 (KHTML, like Gecko) Chrome/26.0.1410.43 Safari/537.31"
-
+    # _user_agent = "Mozilla/5.0 (Windows NT 6.1; Win64; x64; rv:25.0) Gecko/20100101 Firefox/25.0"
+    # _user_agent = "Mozilla/5.0 (compatible; MSIE 10.0; Windows NT 6.1; WOW64; Trident/6.0)"
     # ----------------------------------------------------------------------
     # Login Page for this scraper's site
     # ----------------------------------------------------------------------
-    _login_page = 'https://mymerchinfo.com/eradmin/'
+    _login_page = 'https://www.merituspayment.com/merchants/frmLogin.aspx'
 
     # ----------------------------------------------------------------------
     # This is the column lookup of what we want to go into scraper table,
     # i.e., the data we're looking for from the scraped data.
     # This maps the scrape table field name  to Column Headings
     #  of the scraped data.
+    # Report DateTrans DateCase NoAuth CodeTrans TypeReasonCB TypeCard NoAmount
     # ----------------------------------------------------------------------
-    _col_lookup = {'date_received':'Date Received',
-                   'transaction_date':'Transaction Date',
-                   'card_number':'Card Number',
+    _col_lookup = {'date_received':'Report Date',
+                   'transaction_date':'Trans Date',
+                   'card_number':'Card No',
                    # This scraper doesn't have card type, but we need the placeholder.
-                   'card_type':'Card Type',
+                   'card_type':'card_type',
                    'amount':'Amount',
-                   'case_number':'Case Number',
-                   'merchant_id':'Merchant #',
-                   'messages':'Message'}
+                   'case_number':'Case No',
+                   'merchant_id':'merchant_id',
+                   'messages':'Reason',
+                   'reason_code':'CB Type'}
     
     @classmethod
     def is_scraper_for(cls, portal):
         """
         Factory checks to see if this is the correct portal scraper to return.
-        If we want mymerchinfo, this is the right scraper!
         """
-        return portal == 'global_payments'
+        return portal == 'meritus'
         
 
     def scrape(self):
@@ -85,7 +89,7 @@ class Mymerchinfo(Portal):
         self.logger.info('Loading site login page...')
         
         def wait_load(self):
-            return "Don't have a login?" in browser.html
+            return "Login ID:" in browser.html
 
         # Wait for login page
         self.logger.info('Try loading login page...')
@@ -94,95 +98,92 @@ class Mymerchinfo(Portal):
         
         self.logger.info('Login page loaded...')
         self.logger.info('Setting login form fields...')
-        browser.fill('input[name=username]', self.uid)
-        browser.fill('input[name=password]', self.pwd)
-
+        browser.fill('input[name="ctl00$ContentPlaceHolder1$txtLoginID"]', self.uid)
+        browser.fill('input[name="ctl00$ContentPlaceHolder1$txtPassword"]', self.pwd)
+        
         self.logger.info('Attempting login...')
-        browser.click('input[value=Login]', wait_load=True)
-        browser.wait(1)
+        browser.click('input[value="Log In"]', wait_load=True)
         
         # Make sure the login was successful
-        if 'Username and password combination is invalid.' in browser.html:
-            self.logger.error('INCORRECT USER ID AND/OR PASSWORD!')
-            raise (Exception, 'Incorrect User ID and/or password.  Cannot continue scrape.')
+        if 'Invalid Username/Password.' in browser.html:
+            self.logger.error('Incorrect User ID and/or password.  Cannot continue scrape.')
+            self.error = True
+            return
+            # raise (Exception, 'Incorrect User ID and/or password.  Cannot continue scrape.')
         
         self.logger.info('Login successsful...')
-        self.logger.info('Loading Navigation page...')
-        nextUrl = 'https://mymerchinfo.com/eradmin/showGaaLanding.do?reportType=GA'
+        self.logger.info('Loading Summary page...')
+        self.logger.info('Loading Chargeback page...')
         
         def wait_load(self):
-            return 'For support please call:' in browser.html
-        
-        browser.load(nextUrl, 2, wait_callback=wait_load)
-        
-        # New page load jquery again
-        # from here on out we'll will deal with the iframe
+            return 'CHARGEBACK DETAILS' in browser.html
+            
+        chargeback_page = "https://www.merituspayment.com/merchants/web/SecureReportForms/frmChargebackDetail.aspx?ct=0&dt=0&rd=0&"
+        browser.load(chargeback_page)
         browser.load_jquery(True)
 
-        self.logger.info('Loading chargeback search form page...')
-        browser.runjs("navigate('1_5_reportMenuDiv',2);")
-        browser.wait(20)
+        # TEMP until we get params from DB
+        self.date_from = '01/01/2012'
+        self.date_to = '3/31/2014'
         
-        # TODO: Make sure that we have our search form page, otherwise, raise another exception.
-        n = browser.runjs('$("input[name=MAX_RECORDS]", window.parent.frames[0].document).length;')
-        if n == 0:
-            self.logger.debug('Form did not load in time...')
-            return
-        
-        
-        # Set the query params
-        self.logger.info('Setting chargeback search form parameters...')
-        # Set the max_records field
-        js = '$("input[name=MAX_RECORDS]", window.parent.frames[0].document).val("%s");' % self.max_records
+        # Required to add focus and class so it registers values with form is posted
+        js = '$("#ContentPlaceHolder1_wdcFromDate").addClass("igte_Focus");'
         browser.runjs(js)
         
-        # Set the date search type to BETWEEN
-        js = '$("#RESOLVED_DATE_OP", window.parent.frames[0].document).val("BETWEEN");'
-        browser.runjs(js)
-
-        # Set the start_date field
-        js = '$("#RESOLVED_DATE", window.parent.frames[0].document).val("%s");' % self.start_date
+        js = '$("#ContentPlaceHolder1_wdcFromDate tbody tr td input").select().addClass("igte_InnerFocus").val("%s").keypress();' % self.date_from
         browser.runjs(js)
         
-        # Set the start_date field
-        js = '$("#RESOLVED_DATE_END", window.parent.frames[0].document).val("%s");' % self.end_date
-        browser.runjs(js)
-
-        # Click the submit button
-        self.logger.info('Running chargeback query...')
+        browser.select('input[value="Search"]')
+        browser.click('input[value="Search"]', wait_load=True)
         
-        # All we can do is run the query and wait some time.  
-        # Callbacks are not supported on runjs function, unfortunately.
-        #clickSubmit = 'var alink = $("a").filter(function(index) { return $(this).text() === "Submit"; }); alert(alink.href); alink.trigger("click");'
-        clickSubmit = '$("form", window.parent.frames[0].document).trigger("submit");'
-        browser.runjs(clickSubmit)
-        # currently we wait 30 seconds plus one second for each 5 max_records
-        browser.wait(60*1)
-#        browser.wait(30 + int(self.max_records) * .2)
+        browser.wait(12)
+        # browser.runjs('WebForm_DoPostBackWithOptions(new WebForm_PostBackOptions("ctl00$ContentPlaceHolder1$btnSearch", "", false, "", "frmChargebackDetail.aspx?ct=0&dt=0&rd=0", false, false))')
+        browser.load_jquery(True)
+        browser.wait(4)
         
-        # TODO: Here, we want to check the page until we have the return data, 
-        # so we don't have to use a timer.
-        n = browser.runjs("$('td#ReportTD table tbody', window.parent.frames[0].document).length")
-        if n == 0:
+        # Make sure there are records...
+        if 'No Records Found...' in browser.html:
             self.logger.info('Search parameters did not yield any results. Exiting.')
-            self.error = True
-            browser.close()
+            self.logger.info('----- DONE -----')
             return
         
-        scraped_html = browser.runjs("$('td#ReportTD table tbody', window.parent.frames[0].document).html()")
-        scraped_html = scraped_html.toString()
-            
-        self.logger.info('Records retrieved...')
-
-        # ----------------------------------------------------------------------
+        # --------------------------------------------------
+        # Get the total number of records so we know how many pages
+        # of 100 records per page we are going to scrape.
+        # --------------------------------------------------
+        num_recs = browser.runjs('$("span#ContentPlaceHolder1_lblRecordCount").html();')
+        num_recs = num_recs.toString()
+        
+        self.logger.debug('num_recs: %s' % num_recs)
+        
+        pages = int(math.ceil(float(num_recs)/100))
+        self.logger.debug('pages: %d' % pages)
+        
+        # --------------------------------------------------
         # Scrape the data
-        # ----------------------------------------------------------------------
+        # --------------------------------------------------
+        browser.runjs('$("#ContentPlaceHolder1_cboPageSize").select().val("%s").change();' % '100')
+        browser.wait(8)
+        
+        html = browser.runjs('$("table#ContentPlaceHolder1_grdCCChargebackDetail").html()').toString()
+        
+        # Get the rest of our pages
+        for p in range(2, pages + 1):
+            self.logger.info('Scraping page %d...' % p)
+            browser.runjs("__doPostBack('ctl00$ContentPlaceHolder1$grdCCChargebackDetail','Page$%d');" % p)
+            browser.wait(6)
+            html += browser.runjs('$("table#ContentPlaceHolder1_grdCCChargebackDetail").html()').toString()
+        
+        # --------------------------------------------------
+        # Now that we have all our HTML, let's clean it up...
+        # --------------------------------------------------
+        self.logger.info('Records retrieved...')
         self.logger.info('Saving scraped HTML...')
 
         # Save the original scrape data
         try:
             with open('/temp/temp.html', 'w') as f:
-                f.write(scraped_html)
+                f.write(html)
         except:
             logger.error(sys.exc_info()[0])
 
@@ -200,31 +201,39 @@ class Mymerchinfo(Portal):
             with open('/temp/temp.html', 'r') as f:
                 new_file = f.read()
         except:
-            logger.error(sys.exc_info()[0])
-
+            self.logger.error(sys.exc_info()[0])
+        
         # --------------------------------------------------
         # Convert data to a format that easy to manipulate, 
         # in this case, make tab delimited.
-        # First, get rid of all new lines
         # --------------------------------------------------
         self.logger.info('Converting to TAB delimited data...')
+        # Next, turn many spaces to 1 space
+        new_file = re.sub(r'(\s+)', ' ', new_file)
+        # Get rid of all new lines and tabs
         new_file = re.sub(r'\n|\r|\t', '', new_file)
         # Next, turn </tr> tags to \n
         new_file = re.sub(r'</tr>', r'\n', new_file)
         # Next, turn </td> in comma space
-        new_file = re.sub(r'</td>', r'\t', new_file)
+        new_file = re.sub(r'</td>|</th>', r'\t', new_file)
         # Next, remove any remaining tags
         new_file = re.sub(r'<[^>]*>', '', new_file)
         # Next, remove any remaining tags
         new_file = re.sub(r'&nbsp;', '', new_file)
-
+        
         # --------------------------------------------------
         # Get the FIRST LINE and parse into FIELD NAMES
-        # The first line contains the Fields
+        # The first line contains the Fields.
+        # Strip whitespace from field names
         # --------------------------------------------------
         first_line = new_file.split('\n', 1)[0]
         fields = first_line.split('\t')
-
+        
+        stripped = []
+        for field in fields:
+            stripped.append(field.strip())
+        
+        fields = stripped
         # --------------------------------------------------
         # This section de-duplicates the field names 
         # and appends with a number if they are duplicated.
@@ -249,6 +258,8 @@ class Mymerchinfo(Portal):
         fields = []
         fields = clean
         
+        self.logger.debug(fields)
+        
         # --------------------------------------------------
         # Now that we have our data, we can extract just 
         # the fields we need. (_col_lookup)
@@ -259,22 +270,14 @@ class Mymerchinfo(Portal):
         
         for line in new_file.split('\n'):
             d = dict(zip(fields, line.split('\t')))
-            
-            # --------------------------------------------------
-            # Concatenate all the message fields on to the first one
-            # --------------------------------------------------
-            try:
-                d['Message'] = '%s %s %s %s' % (d['Message'], d['Message 1'], d['Message 2'], d['Message 3'])
-            except:
-                # on the rows where we don't have the message fields, just pass.
-                pass
-                
             adata.append(d)
+        
+        print adata
         
         # We can probably strip off the first row (column names)
         adata = adata[1:]
         # Strip off the last 3 non-record rows
-        adata = adata[:-3]
+#        adata = adata[:-3]
         
         # The data is now clean.  We have all our rows and columns from the scraped
         # data and we can now transform it to just the data we need. 
